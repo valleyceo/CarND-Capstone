@@ -67,7 +67,9 @@ class DBWNode(object):
                                          BrakeCmd, queue_size=1)
 
 
-        # TODONE: Create `Controller` object
+        # TODONE: Create `Controller` object.
+        # NOTE: I pass the dbw_node obect to the controller so I don't
+        #       have huge ugly param list for initialization
         self.controller = Controller(self)
 
         # TODONE: Subscribe to all the topics you need to
@@ -118,13 +120,11 @@ class DBWNode(object):
 
     def twist_cmd_cb(self, msg):
         self.proposed_linear = msg.twist.linear.x
-        # FIXME... this angular velocity cannot be correct
-        self.proposed_angular = msg.twist.angular.x
+        self.proposed_angular = msg.twist.angular.z
         return
     
     def current_velocity_cb(self, msg):
-        x = msg.twist.linear.x
-        self.current_velocity = x
+        self.current_velocity = msg.twist.linear.x
         return
 
     def dbw_enabled_cb(self, msg):
