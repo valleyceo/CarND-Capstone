@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import rospy
+from std_msgs.msg import Int32
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 
@@ -27,28 +28,33 @@ LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this n
 class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
+        
+        self.waypoints = []
+        self.x_ave = 0.0
+        self.y_ave = 0.0
+        self.phi = []
+        self.wrap = 0
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
-        # Hmmm, don't really know the msg type I guess.
-        #rospy.Subscriber('/traffic_waypoint', int32, self.traffic_cb)
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
         # There is no topic (yet) for /obstacle_waypoint
         #rospy.Subscriber('/obstacle_waypoint', ???, self.obstacle_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
-        # TODO: Add other member variables you need below
-        self.waypoints = []
-        self.x_ave = 0.0
-        self.y_ave = 0.0
-        self.phi = []
-        self.wrap = 0
         rospy.spin()
 
     # Linear search... we should do better!
     def get_index(self, phi):
+        # special cases
+        if phi < self.phi[self.wrap - 1]:
+            return self.wrap
+        if self.phi[-1] < phi < self.phi[0]:
+            return 0
+        
+        # General case
         idx = 0 if phi <= self.phi[0] else self.wrap
         while phi < self.phi[idx]:
             idx += 1
@@ -80,12 +86,14 @@ class WaypointUpdater(object):
             y = p.pose.pose.position.y - self.y_ave
             phi = math.atan2(x, y)
             self.phi.append(phi)
-            if (len(self.phi) > 1) and self.phi[-1] * self.phi[-2] < 0.0:
+            # save the index where phi jumps by 2pi
+            if (len(self.phi) > 1) and self.phi[-1] * self.phi[-2] < -9.0:
                 self.wrap = len(self.phi) - 1
                 
         self.waypoints.extend(wp)
         # make wrap around easier by extending waypoints
         self.waypoints.extend(wp[0:LOOKAHEAD_WPS])
+
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
