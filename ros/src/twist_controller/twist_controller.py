@@ -29,4 +29,8 @@ class Controller(object):
     def control(self, plv, pav, clv):
         # TODO: Change the arg, kwarg list to suit your needs
         # Return throttle, brake, steer
-        return 0.2, 0., 0.
+        #throttle = pid_controller()
+        throttle = 0.5
+        steering = self.yaw_control.get_steering(plv, pav, clv)
+        brake = 0.0
+        return throttle, brake, steering
