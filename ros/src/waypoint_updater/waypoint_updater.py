@@ -47,7 +47,9 @@ class WaypointUpdater(object):
         #rospy.Subscriber('/obstacle_waypoint', ???, self.obstacle_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-        self.fd = open("/home/student/vercap/indices.csv", "w")
+
+        # for debugging
+        #self.fd = open("/home/student/vercap/indices.csv", "w")
         rospy.spin()
         
     def get_index(self, x, y):
@@ -56,15 +58,12 @@ class WaypointUpdater(object):
         if rho > self.phi[-1]:
             return 0
         
-        #idx = max(0, int((rho/(2*math.pi)) * len(self.waypoints))) - 50
         idx = 0
-        
         while rho > self.phi[idx]:
             idx += 1
 
-        self.fd.write("%f,%f,%d\n" % (x, y, idx + 1))
-        # we want the one in front
-        return idx + 1
+        #self.fd.write("%f,%f,%d\n" % (x, y, idx))
+        return idx
 
     def get_angle(self, x, y):
         # First center
@@ -75,7 +74,7 @@ class WaypointUpdater(object):
         xr = xc * math.cos(self.rotate) - yc * math.sin(self.rotate)
         yr = yc * math.cos(self.rotate) + xc * math.sin(self.rotate)
         
-        # rho now starts at 0 and goes to 2pi
+        # rho now starts at 0 and goes to 2pi for the track waypoints
         rho = math.pi - math.atan2(xr, yr)
 
         if rho > 6.28:
@@ -99,9 +98,12 @@ class WaypointUpdater(object):
             x_tot += p.pose.pose.position.x
             y_tot += p.pose.pose.position.y
 
+        # We use the average values to recenter the waypoints
         self.x_ave = x_tot / len(wp)
         self.y_ave = y_tot / len(wp)
-
+        
+        # The very first waypoint determines the angle we need to rotate
+        # all waypoints by
         xc = wp[0].pose.pose.position.x - self.x_ave
         yc = wp[0].pose.pose.position.y - self.y_ave
         self.rotate = math.atan2(xc, yc) + math.pi
