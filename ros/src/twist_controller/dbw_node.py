@@ -56,6 +56,7 @@ class DBWNode(object):
         self.max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
         
         self.current_velocity = 0.0
+        self.current_angular = 0.0
         self.proposed_linear = 0.0
         self.proposed_angular = 0.0
         
@@ -93,7 +94,8 @@ class DBWNode(object):
             
             throttle, brake, steering = self.controller.control(self.proposed_linear,
                                                                 self.proposed_angular,
-                                                                self.current_velocity)
+                                                                self.current_velocity,
+                                                                self.current_angular)
 
             if self.dbw_enabled:
                 self.publish(throttle, brake, steering)
@@ -125,6 +127,7 @@ class DBWNode(object):
     
     def current_velocity_cb(self, msg):
         self.current_velocity = msg.twist.linear.x
+        self.current_angular = msg.twist.angular.z
         return
 
     def dbw_enabled_cb(self, msg):

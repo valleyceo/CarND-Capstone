@@ -4,22 +4,26 @@ import rospy
 from std_msgs.msg import Int32
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
+from copy import deepcopy
 
 import math
 
-'''
-This node will publish waypoints from the car's current position to some `x` distance ahead.
+'''This node will publish waypoints from the car's current position
+to some `x` distance ahead.
 
-As mentioned in the doc, you should ideally first implement a version which does not care
-about traffic lights or obstacles.
+As mentioned in the doc, you should ideally first implement a version
+which does not care about traffic lights or obstacles.
 
-Once you have created dbw_node, you will update this node to use the status of traffic lights too.
+Once you have created dbw_node, you will update this node to use the
+status of traffic lights too.
 
-Please note that our simulator also provides the exact location of traffic lights and their
-current status in `/vehicle/traffic_lights` message. You can use this message to build this node
-as well as to verify your TL classifier.
+Please note that our simulator also provides the exact location of
+traffic lights and their current status in `/vehicle/traffic_lights`
+message. You can use this message to build this node as well as to
+verify your TL classifier.
 
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
+
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
@@ -32,9 +36,9 @@ class WaypointUpdater(object):
         self.waypoints = []
         self.x_ave = 0.0
         self.y_ave = 0.0
+        self.rotate = 0.0
         self.phi = []
-        self.wrap = 0
-
+        
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
@@ -43,33 +47,50 @@ class WaypointUpdater(object):
         #rospy.Subscriber('/obstacle_waypoint', ???, self.obstacle_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-
+        self.fd = open("/home/student/vercap/indices.csv", "w")
         rospy.spin()
-
-    # Linear search... we should do better!
-    def get_index(self, phi):
-        # special cases
-        if phi < self.phi[self.wrap - 1]:
-            return self.wrap
-        if self.phi[-1] < phi < self.phi[0]:
+        
+    def get_index(self, x, y):
+        rho = self.get_angle(x, y)
+        # special case of wrap around when past last waypoint
+        if rho > self.phi[-1]:
             return 0
         
-        # General case
-        idx = 0 if phi <= self.phi[0] else self.wrap
-        while phi < self.phi[idx]:
-            idx += 1
-        return idx
+        #idx = max(0, int((rho/(2*math.pi)) * len(self.waypoints))) - 50
+        idx = 0
         
+        while rho > self.phi[idx]:
+            idx += 1
+
+        self.fd.write("%f,%f,%d\n" % (x, y, idx + 1))
+        # we want the one in front
+        return idx + 1
+
+    def get_angle(self, x, y):
+        # First center
+        xc = x - self.x_ave
+        yc = y - self.y_ave
+        
+        # and now rotate
+        xr = xc * math.cos(self.rotate) - yc * math.sin(self.rotate)
+        yr = yc * math.cos(self.rotate) + xc * math.sin(self.rotate)
+        
+        # rho now starts at 0 and goes to 2pi
+        rho = math.pi - math.atan2(xr, yr)
+
+        if rho > 6.28:
+            rospy.logwarn("large rho %f" % rho)
+            
+        return rho
+
     def pose_cb(self, msg):
         # pose_cb might be called before waypoints_cb
         if self.waypoints == []:
             return None
-        x = msg.pose.position.x - self.x_ave
-        y = msg.pose.position.y - self.y_ave
-        phi = math.atan2(x, y)
-        idx = self.get_index(phi)
+
+        idx = self.get_index(msg.pose.position.x, msg.pose.position.y)            
         self.publish(idx)
-        
+
     def waypoints_cb(self, lane):
         wp = lane.waypoints
         x_tot = 0.0
@@ -81,19 +102,17 @@ class WaypointUpdater(object):
         self.x_ave = x_tot / len(wp)
         self.y_ave = y_tot / len(wp)
 
+        xc = wp[0].pose.pose.position.x - self.x_ave
+        yc = wp[0].pose.pose.position.y - self.y_ave
+        self.rotate = math.atan2(xc, yc) + math.pi
+
         for p in wp:
-            x = p.pose.pose.position.x - self.x_ave
-            y = p.pose.pose.position.y - self.y_ave
-            phi = math.atan2(x, y)
-            self.phi.append(phi)
-            # save the index where phi jumps by 2pi
-            if (len(self.phi) > 1) and self.phi[-1] * self.phi[-2] < -9.0:
-                self.wrap = len(self.phi) - 1
+            rho = self.get_angle(p.pose.pose.position.x, p.pose.pose.position.y)
+            self.phi.append(rho)
                 
         self.waypoints.extend(wp)
         # make wrap around easier by extending waypoints
         self.waypoints.extend(wp[0:LOOKAHEAD_WPS])
-
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -119,7 +138,7 @@ class WaypointUpdater(object):
 
     def publish(self, idx):
         lane = Lane()
-        lane.header.frame_id = '/stuff'
+        lane.header.frame_id = '/world'
         lane.header.stamp = rospy.Time.now()
         lane.waypoints = []
         lane.waypoints.extend(self.waypoints[idx:idx+LOOKAHEAD_WPS])
