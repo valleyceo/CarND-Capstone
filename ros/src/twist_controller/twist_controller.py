@@ -4,8 +4,8 @@ from yaw_controller import YawController
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-CONTROL_RATE = 50.0  # Htz
-CONTROL_PERIOD_ = 1.0 / CONTROL_RATE
+CONTROL_RATE = 10.0  # Htz
+CONTROL_PERIOD = 1.0 / CONTROL_RATE
 
 
 class Controller(object):
@@ -35,22 +35,27 @@ class Controller(object):
                 current_linear, current_angular):
 
         throttle = 0.6
-        # just add in a little proportional control
+        # Maybe add in a little proportional control for steering?
         steering = self.yaw_control.get_steering(proposed_linear,
                                                  proposed_angular,
                                                  current_linear)
         brake = 0.0
 
-        # vel_error = proposed_linear_velocity - current_linear_velocity
-        # if proposed_linear_velocity < self.min_speed:
+        # velo_error = proposed_linear - current_linear
+        # if proposed_linear < self.min_speed:
         #     self.velo_pid.reset()
 
-        # accel_cmd = self.velo_pid.step(vel_error, CONTROL_PERIOD)
+        # accel_cmd = self.velo_pid.step(velo_error, CONTROL_PERIOD)
         # if accel_cmd >= 0:
         #     #throttle = self.accel_pid.step(accel_cmd - lpf_accel_.get(), CONTROL_PERIOD)
-        #     th = self.accel_pid.step(accel_cmd, CONTROL_PERIOD)
+        #     throttle = self.accel_pid.step(accel_cmd, CONTROL_PERIOD)
         # else:
-        #     accel_pid.reset()
-        #     #throttle = 0.0
-        
+        #     self.accel_pid.reset()
+        #     throttle = 0.0
+            
+        # # dbw not engaged, don't accumulate error
+        # if  not self.dbw_node.dbw_enabled:
+        #     self.velo_pid.reset()
+        #     self.accel_pid.reset()
+            
         return throttle, brake, steering
