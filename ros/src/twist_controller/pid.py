@@ -24,8 +24,9 @@ class PID(object):
         derivative = (error - self.last_error) / sample_time;
 
         y = self.kp * error + self.ki * self.int_val + self.kd * derivative;
-        val = max(self.min, min(y, self.max))
-
+        
+        #val = max(self.min, min(y, self.max))
+        val = y
         if val > self.max:
             val = self.max
         elif val < self.min:

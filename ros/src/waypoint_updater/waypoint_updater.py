@@ -10,7 +10,7 @@ import math
 
 ONE_MPH = 0.44704
 
-TARGET_VELOCITY = ONE_MPH * 15.0
+TARGET_VELOCITY = ONE_MPH * 20.0
 
 '''This node will publish waypoints from the car's current position
 to some `x` distance ahead.
