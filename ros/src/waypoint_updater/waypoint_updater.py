@@ -8,6 +8,10 @@ from copy import deepcopy
 
 import math
 
+ONE_MPH = 0.44704
+
+TARGET_VELOCITY = ONE_MPH * 15.0
+
 '''This node will publish waypoints from the car's current position
 to some `x` distance ahead.
 
@@ -26,7 +30,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 20 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -145,7 +149,7 @@ class WaypointUpdater(object):
         lane.waypoints = []
         lane.waypoints.extend(self.waypoints[idx:idx+LOOKAHEAD_WPS])
         for i in range(LOOKAHEAD_WPS):
-            self.set_waypoint_velocity(lane.waypoints, i, 30.0)
+            self.set_waypoint_velocity(lane.waypoints, i, TARGET_VELOCITY)
 
         self.final_waypoints_pub.publish(lane)
         

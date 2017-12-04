@@ -4,7 +4,11 @@ import rospy
 from std_msgs.msg import Bool
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
 from geometry_msgs.msg import TwistStamped
+from lowpass import LowPassFilter
 import math
+
+CONTROL_RATE = 50  # Htz
+CONTROL_PERIOD = 1.0 / CONTROL_RATE
 
 from twist_controller import Controller
 
@@ -44,21 +48,22 @@ class DBWNode(object):
         # Instance values
         self.dbw_enabled = True
 
-        self.vehicle_mass = rospy.get_param('~vehicle_mass', 1736.35)
-        self.fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)
-        self.brake_deadband = rospy.get_param('~brake_deadband', .1)
-        self.decel_limit = rospy.get_param('~decel_limit', -5)
+        self.vehicle_mass = rospy.get_param('~vehicle_mass', 1736.35)  # check
+        self.fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)   # check
+        self.brake_deadband = rospy.get_param('~brake_deadband', .1)   # check
+        self.decel_limit = rospy.get_param('~decel_limit', -5)         # check
         self.accel_limit = rospy.get_param('~accel_limit', 1.)
-        self.wheel_radius = rospy.get_param('~wheel_radius', 0.2413)
-        self.wheel_base = rospy.get_param('~wheel_base', 2.8498)
-        self.steer_ratio = rospy.get_param('~steer_ratio', 14.8)
+        self.wheel_radius = rospy.get_param('~wheel_radius', 0.2413)   # check
+        self.wheel_base = rospy.get_param('~wheel_base', 2.8498)       # check
+        self.steer_ratio = rospy.get_param('~steer_ratio', 14.8)       # check
         self.max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
-        self.max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
+        self.max_steer_angle = rospy.get_param('~max_steer_angle', 8.) # check
         
         self.current_velocity = 0.0
         self.current_angular = 0.0
         self.proposed_linear = 0.0
         self.proposed_angular = 0.0
+        self.lp_filter = LowPassFilter(0.5, CONTROL_PERIOD)
         
         self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
                                          SteeringCmd, queue_size=1)
@@ -67,10 +72,9 @@ class DBWNode(object):
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
 
-
-        # TODONE: Create `Controller` object.
-        # NOTE: I pass the dbw_node obect to the controller so I don't
-        #       have huge ugly param list for initialization
+        # NOTE: I pass the dbw_node object to the controller so I don't
+        #       have huge ugly param list for initialization.  Perhaps
+        #       not the best practice...
         self.controller = Controller(self)
 
         # TODONE: Subscribe to all the topics you need to
@@ -82,16 +86,8 @@ class DBWNode(object):
         self.loop()
 
     def loop(self):
-        rate = rospy.Rate(50) # 50Hz
+        rate = rospy.Rate(CONTROL_RATE) # 50Hz
         while not rospy.is_shutdown():
-            # TODO: Get predicted throttle, brake, and steering using `twist_controller`
-            # You should only publish the control commands if dbw is enabled
-            # throttle, brake, steering = self.controller.control(<proposed linear velocity>,
-            #                                                      <proposed angular velocity>,
-            #                                                      <current linear velocity>,
-            #                                                      <dbw status>,
-            #                                                      <any other argument you need
-            
             throttle, brake, steering = self.controller.control(self.proposed_linear,
                                                                 self.proposed_angular,
                                                                 self.current_velocity,
@@ -126,6 +122,8 @@ class DBWNode(object):
         return
     
     def current_velocity_cb(self, msg):
+        # lowpass filter the finite difference approximation to the acceleration
+        self.lp_filter.filt((self.current_velocity - msg.twist.linear.x) / CONTROL_RATE)
         self.current_velocity = msg.twist.linear.x
         self.current_angular = msg.twist.angular.z
         return
