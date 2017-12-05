@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import math
 import rospy
 from std_msgs.msg import Int32
 from geometry_msgs.msg import PoseStamped, Pose
@@ -18,7 +19,11 @@ class TLDetector(object):
         rospy.init_node('tl_detector')
 
         self.pose = None
-        self.waypoints = None
+        self.waypoints = []
+        self.x_ave = None
+        self.y_ave = None
+        self.rotate = None
+        self.phi = []
         self.camera_image = None
         self.lights = []
 
@@ -54,8 +59,53 @@ class TLDetector(object):
     def pose_cb(self, msg):
         self.pose = msg
 
-    def waypoints_cb(self, waypoints):
-        self.waypoints = waypoints
+    def get_index(self, x, y):
+        rho = self.get_angle(x, y)
+        # special case of wrap around when past last waypoint
+        if rho > self.phi[-1]:
+            return 0
+        
+        idx = 0
+        while rho > self.phi[idx]:
+            idx += 1
+
+        return idx
+
+    def get_angle(self, x, y):
+        # First center
+        xc = x - self.x_ave
+        yc = y - self.y_ave
+        
+        # and now rotate
+        xr = xc * math.cos(self.rotate) - yc * math.sin(self.rotate)
+        yr = yc * math.cos(self.rotate) + xc * math.sin(self.rotate)
+        
+        # rho now starts at 0 and goes to 2pi for the track waypoints
+        rho = math.pi - math.atan2(xr, yr)
+        return rho
+        
+    def waypoints_cb(self, lane):
+        self.waypoints.extend(lane.waypoints)
+        x_tot = 0.0
+        y_tot = 0.0
+        for p in self.waypoints:
+            x_tot += p.pose.pose.position.x
+            y_tot += p.pose.pose.position.y
+
+        # We use the average values to recenter the self.waypoints
+        self.x_ave = x_tot / len(self.waypoints)
+        self.y_ave = y_tot / len(self.waypoints)
+        
+        # The very first waypoint determines the angle we need to rotate
+        # all waypoints by
+        xc = self.waypoints[0].pose.pose.position.x - self.x_ave
+        yc = self.waypoints[0].pose.pose.position.y - self.y_ave
+        self.rotate = math.atan2(xc, yc) + math.pi
+
+        for p in self.waypoints:
+            rho = self.get_angle(p.pose.pose.position.x, p.pose.pose.position.y)
+            self.phi.append(rho)
+                
 
     def traffic_cb(self, msg):
         self.lights = msg.lights
@@ -100,8 +150,7 @@ class TLDetector(object):
             int: index of the closest waypoint in self.waypoints
 
         """
-        #TODO implement
-        return 0
+        return self.get_index(pose.position.x, pose.position.y)
 
     def get_light_state(self, light):
         """Determines the current color of the traffic light
@@ -143,7 +192,7 @@ class TLDetector(object):
         if light:
             state = self.get_light_state(light)
             return light_wp, state
-        self.waypoints = None
+        #self.waypoints = None
         return -1, TrafficLight.UNKNOWN
 
 if __name__ == '__main__':

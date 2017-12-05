@@ -10,7 +10,7 @@ import math
 
 ONE_MPH = 0.44704
 
-TARGET_VELOCITY = ONE_MPH * 20.0
+TARGET_VELOCITY = ONE_MPH * 30.0
 
 '''This node will publish waypoints from the car's current position
 to some `x` distance ahead.
@@ -121,7 +121,7 @@ class WaypointUpdater(object):
         self.waypoints.extend(wp[0:LOOKAHEAD_WPS])
 
     def traffic_cb(self, msg):
-        # TODO: Callback for /traffic_waypoint message. Implement
+        self.red_light = msg
         pass
 
     def obstacle_cb(self, msg):

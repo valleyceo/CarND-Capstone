@@ -117,7 +117,9 @@ class DBWNode(object):
         self.brake_pub.publish(bcmd)
 
     def twist_cmd_cb(self, msg):
-        self.proposed_linear = msg.twist.linear.x
+        # There is a bug in the pure_pursuit code that sometimes returns a negative
+        # linear.x, so we just take the abs() here as suggested on Slack
+        self.proposed_linear = abs(msg.twist.linear.x)
         self.proposed_angular = msg.twist.angular.z
         return
     

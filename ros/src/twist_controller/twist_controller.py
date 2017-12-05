@@ -14,6 +14,7 @@ class Controller(object):
         self.dbw_node = dbw_node
         self.min_speed = 0.1
 
+        # This assumes that the gas tank is always full
         self.vehicle_mass = self.dbw_node.vehicle_mass + \
                             GAS_DENSITY * self.dbw_node.fuel_capacity + \
                             PASSENGER_MASS
@@ -65,27 +66,25 @@ class Controller(object):
 
         accel_est = self.velo_pid.step(velo_error, CONTROL_PERIOD)
 
-        rospy.logwarn("proposed: %f  current: %f  error: %f  accel: %f" % \
-                      (proposed_linear, current_linear, velo_error, accel_est))
-        # if current_linear < 1e-2:
-        #     accel_est = min(accel_est, -530 / self.vehicle_mass / self.dbw_node.wheel_radius)
-            
-        #rospy.logwarn("accel_est: %f" % accel_est)
+        # rospy.logwarn("proposed: %f  current: %f  error: %f  accel: %f" % \
+        #               (proposed_linear, current_linear, velo_error, accel_est))
         
         if accel_est >= 0:
             filtered_accel = self.dbw_node.lp_filter.get()
             delta_accel = accel_est - filtered_accel
             tctrl = self.accel_pid.step(delta_accel, CONTROL_PERIOD)
             throttle = tctrl
-            rospy.logwarn("  filtered: %f   delta: %f   throttle: %f" % (filtered_accel,
-                                                                        delta_accel, tctrl))
+            #rospy.logwarn("  filtered: %f   delta: %f   throttle: %f" % (filtered_accel,
+            #                                                            delta_accel, tctrl))
         else:
             self.accel_pid.reset()
             throttle = 0.0
 
         if accel_est < -self.dbw_node.brake_deadband:
-            brake = min(-accel_est * self.vehicle_mass * self.dbw_node.wheel_radius,
-                        -self.dbw_node.decel_limit)
+            # braking takes a positive value
+            calc_brake = -accel_est * self.vehicle_mass * self.dbw_node.wheel_radius
+            brake = min(calc_brake, -self.dbw_node.decel_limit)
+            #rospy.logwarn("CALC_BRAKING: %f   BRAKE %f" % (calc_brake, brake))
         else:
             brake = 0.0
             
