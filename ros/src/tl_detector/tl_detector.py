@@ -12,6 +12,7 @@ import tf
 import cv2
 import yaml
 
+USE_CLASSIFICATION = False
 STATE_COUNT_THRESHOLD = 3
 
 class TLDetector(object):
@@ -24,6 +25,7 @@ class TLDetector(object):
         self.y_ave = None
         self.rotate = None
         self.phi = []
+        self.stop_lines = None        
         self.camera_image = None
         self.lights = []
 
@@ -61,7 +63,7 @@ class TLDetector(object):
 
     def get_index(self, x, y):
         rho = self.get_angle(x, y)
-        # special case of wrap around when past last waypoint
+        # special case of wrap around when past the last waypoint
         if rho > self.phi[-1]:
             return 0
         
@@ -108,7 +110,27 @@ class TLDetector(object):
                 
 
     def traffic_cb(self, msg):
+        # Note that we depend on the fact that the stop_lines and the
+        # traffic lights appear in the same order
+        stop_line_positions = self.config['stop_line_positions']
+        self.stop_lines = []
+        for light, stop_line in zip(msg.lights, stop_line_positions):
+            sidx = self.get_index(stop_line[0], stop_line[1])
+            self.stop_lines.append((sidx, light.state, light))
+        self.stop_lines.sort()
         self.lights = msg.lights
+
+    def get_next_stop_line(self, pos):
+        if len(self.stop_lines) == 0:
+            return (None, None, None)
+        elif pos > self.stop_lines[-1][0]:
+            return self.stop_lines[0]
+        idx = 0
+        num_lights = len(self.stop_lines)
+        while pos > self.stop_lines[idx][0]:
+            idx += 1
+
+        return self.stop_lines[idx]
 
     def image_cb(self, msg):
         """Identifies red lights in the incoming camera image and publishes the index
@@ -186,12 +208,14 @@ class TLDetector(object):
         stop_line_positions = self.config['stop_line_positions']
         if(self.pose):
             car_position = self.get_closest_waypoint(self.pose.pose)
-
-        #TODO find the closest visible traffic light (if one exists)
+            #TODO find the closest visible traffic light (if one exists)
+            stop_line_wp, state, light = self.get_next_stop_line(car_position)
 
         if light:
-            state = self.get_light_state(light)
-            return light_wp, state
+            if USE_CLASSIFICATION:
+                state = self.get_light_state(light)
+            return stop_line_wp, state
+        
         #self.waypoints = None
         return -1, TrafficLight.UNKNOWN
 

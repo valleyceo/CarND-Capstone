@@ -29,11 +29,13 @@ class Controller(object):
         # Values of Kp, Ki, and Kd are from DataSpeed example
         # This is really only a proportional filter
         # (curiously, it looks like DS sets both min and max to 9.8
-        self.velo_pid = PID(2.0, 0.0, 0.0, -9.8, 9.8)
+        #self.velo_pid = PID(2.0, 0.0, 0.0, -9.8, 9.8)
+        self.velo_pid = PID(2.0, 0.0, 0.1, -9.8, 9.8)
         
         # Throttle is between 0.0 and 1.0
         # Values of Kp, Ki, and Kd are from DataSpeed example
-        self.accel_pid = PID(0.4, 0.1, 0.0, 0.0, 1.0)
+        #self.accel_pid = PID(0.4, 0.1, 0.0, 0.0, 1.0)
+        self.accel_pid = PID(0.4, 0.1, 0.2, 0.0, 1.0)
         
 
     # This only does yaw control at constant throttle.  Now used
