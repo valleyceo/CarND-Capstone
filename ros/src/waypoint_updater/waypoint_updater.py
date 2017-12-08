@@ -2,15 +2,18 @@
 
 import rospy
 from std_msgs.msg import Int32
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from styx_msgs.msg import Lane, Waypoint
 from copy import deepcopy
 
 import math
 
 ONE_MPH = 0.44704
+CREEP_VELOCITY = 1.5
+CREEP_RANGE = 30
 
-TARGET_VELOCITY = ONE_MPH * 30.0
+# Target velocity in meters per second.
+TARGET_VELOCITY = ONE_MPH * 24.0
 
 '''This node will publish waypoints from the car's current position
 to some `x` distance ahead.
@@ -30,7 +33,9 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 '''
 
-LOOKAHEAD_WPS = 20 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+
+BRAKING_RANGE = 120 # This _must_ be smaller than lookahead
 
 
 class WaypointUpdater(object):
@@ -42,18 +47,24 @@ class WaypointUpdater(object):
         self.y_ave = 0.0
         self.rotate = 0.0
         self.phi = []
+        self.current_velocity = 0.0
+        self.red_light = -1
+        self.last_x = 0.0
+        self.last_y = 0.0
+
+        max_velocity = float(rospy.get_param("/waypoint_loader/velocity")) / 3.6
+        self.target_velocity = min(TARGET_VELOCITY, max_velocity)
+        rospy.logwarn("target velocity %f" % self.target_velocity)
         
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
-
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
+        
         # There is no topic (yet) for /obstacle_waypoint
         #rospy.Subscriber('/obstacle_waypoint', ???, self.obstacle_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-
-        # for debugging
-        #self.fd = open("/home/student/vercap/indices.csv", "w")
         rospy.spin()
         
     def get_index(self, x, y):
@@ -66,7 +77,6 @@ class WaypointUpdater(object):
         while rho > self.phi[idx]:
             idx += 1
 
-        #self.fd.write("%f,%f,%d\n" % (x, y, idx))
         return idx
 
     def get_angle(self, x, y):
@@ -81,8 +91,8 @@ class WaypointUpdater(object):
         # rho now starts at 0 and goes to 2pi for the track waypoints
         rho = math.pi - math.atan2(xr, yr)
 
-        if rho > 6.28:
-            rospy.logwarn("large rho %f" % rho)
+        if rho > 6.2828:
+            rospy.logwarn("Completed a lap")
             
         return rho
 
@@ -91,11 +101,16 @@ class WaypointUpdater(object):
         if self.waypoints == []:
             return None
 
-        idx = self.get_index(msg.pose.position.x, msg.pose.position.y)            
-        self.publish(idx)
+        self.last_x = msg.pose.position.x
+        self.last_y = msg.pose.position.y
+        idx = self.get_index(msg.pose.position.x, msg.pose.position.y)                  self.publish(idx)
 
     def waypoints_cb(self, lane):
         wp = lane.waypoints
+        # the very first waypoint has the unadulterated max velocity
+        # in meters per second that is set in the launch file for the
+        # waypoints loader
+        
         x_tot = 0.0
         y_tot = 0.0
         for p in wp:
@@ -120,10 +135,14 @@ class WaypointUpdater(object):
         # make wrap around easier by extending waypoints
         self.waypoints.extend(wp[0:LOOKAHEAD_WPS])
 
-    def traffic_cb(self, msg):
-        self.red_light = msg
-        pass
+    def current_velocity_cb(self, msg):
+        self.current_velocity = msg.twist.linear.x
+        return
 
+    def traffic_cb(self, msg):
+        self.red_light = msg.data
+        return
+    
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later
         pass
@@ -132,6 +151,8 @@ class WaypointUpdater(object):
         return waypoint.twist.twist.linear.x
 
     def set_waypoint_velocity(self, waypoints, waypoint, velocity):
+        if not (0 <= waypoint <= len(waypoints)):
+            rospy.logwarn("WTF: %d %d" % (waypoint, len(waypoints)))
         waypoints[waypoint].twist.twist.linear.x = velocity
 
     def distance(self, waypoints, wp1, wp2):
@@ -141,6 +162,7 @@ class WaypointUpdater(object):
             dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
             wp1 = i
         return dist
+    
 
     def publish(self, idx):
         lane = Lane()
@@ -148,8 +170,26 @@ class WaypointUpdater(object):
         lane.header.stamp = rospy.Time.now()
         lane.waypoints = []
         lane.waypoints.extend(self.waypoints[idx:idx+LOOKAHEAD_WPS])
-        for i in range(LOOKAHEAD_WPS):
-            self.set_waypoint_velocity(lane.waypoints, i, TARGET_VELOCITY)
+        # it looks like we sometimes get bad red_light data
+        dist = self.red_light - idx
+        if dist > 0 and self.red_light > -1 and dist < BRAKING_RANGE:
+            if idx < 280 and dist < CREEP_RANGE and self.current_velocity < CREEP_VELOCITY:
+                for i in range(CREEP_RANGE - 5):
+                    self.set_waypoint_velocity(lane.waypoints, i, CREEP_VELOCITY)
+                for i in range(CREEP_RANGE - 5, LOOKAHEAD_WPS):
+                    self.set_waypoint_velocity(lane.waypoints, i, 0.0)
+            else:                
+                incr = 1.1 * (self.current_velocity / max(0.1, float(dist)))
+                velo = self.current_velocity - incr
+                for i in range(dist):
+                    self.set_waypoint_velocity(lane.waypoints, i, max(0.0, velo))
+                    velo -= incr
+                #rospy.logwarn("%d  %d  %d  %d" % (dist, len(lane.waypoints), LOOKAHEAD_WPS))
+                for i in range(dist, LOOKAHEAD_WPS):
+                    self.set_waypoint_velocity(lane.waypoints, i, 0.0)
+        else:
+            for i in range(LOOKAHEAD_WPS):
+                self.set_waypoint_velocity(lane.waypoints, i, self.target_velocity)
 
         self.final_waypoints_pub.publish(lane)
         

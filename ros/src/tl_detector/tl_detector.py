@@ -21,9 +21,9 @@ class TLDetector(object):
 
         self.pose = None
         self.waypoints = []
-        self.x_ave = None
-        self.y_ave = None
-        self.rotate = None
+        self.x_ave = 0.0
+        self.y_ave = 0.0
+        self.rotate = 0.0
         self.phi = []
         self.stop_lines = None        
         self.camera_image = None
@@ -129,6 +129,8 @@ class TLDetector(object):
         num_lights = len(self.stop_lines)
         while pos > self.stop_lines[idx][0]:
             idx += 1
+            if idx >= len(self.stop_lines):
+                rospy.logerr("stop lines idx: %d" % idx)
 
         return self.stop_lines[idx]
 
@@ -190,7 +192,7 @@ class TLDetector(object):
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
 
-        #Get classification
+        # Get classification
         return self.light_classifier.get_classification(cv_image)
 
     def process_traffic_lights(self):
