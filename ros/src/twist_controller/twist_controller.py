@@ -6,6 +6,8 @@ GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
 CONTROL_RATE = 50  # Htz
 CONTROL_PERIOD = 1.0 / CONTROL_RATE
+
+# Two people in car?
 PASSENGER_MASS = 150
 SPEED_EPS = 0.1
 
@@ -65,7 +67,7 @@ class Controller(object):
 
         velo_error = proposed_linear - current_linear
 
-
+        # Reset integration sum if error is small
         if abs(velo_error) < SPEED_EPS or proposed_linear < self.min_speed:
             self.velo_pid.reset()
 

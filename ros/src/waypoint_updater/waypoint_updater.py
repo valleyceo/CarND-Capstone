@@ -35,7 +35,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
 
-BRAKING_RANGE = 120 # This _must_ be smaller than lookahead
+BRAKING_RANGE = 200 # This _must_ be smaller than lookahead
 
 
 class WaypointUpdater(object):
@@ -45,11 +45,14 @@ class WaypointUpdater(object):
         self.waypoints = []
         self.x_ave = 0.0
         self.y_ave = 0.0
-        self.rotate = 0.0
+        self.cos_rotate = 0.0
+        self.sin_rotate = 0.0
         self.phi = []
         self.current_velocity = 0.0
         self.red_light = -1
-
+        self.lap_count = 0
+        self.lap_toggle = False
+        
         max_velocity = float(rospy.get_param("/waypoint_loader/velocity")) / 3.6
         self.target_velocity = min(TARGET_VELOCITY, max_velocity)
         rospy.logwarn("target velocity %f" % self.target_velocity)
@@ -64,17 +67,28 @@ class WaypointUpdater(object):
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
         rospy.spin()
-        
+
+    def lap(self, rho):
+        # Ugly but robust
+        if rho < 0.2 and self.lap_toggle:
+            self.lap_count += 1
+            rospy.logwarn("Completed lap %d" % self.lap_count)
+            self.lap_toggle = False
+        elif rho > 6.2:
+            self.lap_toggle = True
+        return
+    
     def get_index(self, x, y):
         rho = self.get_angle(x, y)
         # special case of wrap around when past last waypoint
-        if rho > self.phi[-1]:
+        if not self.phi or rho > self.phi[-1]:
             return 0
+        
+        self.lap(rho)
         
         idx = 0
         while rho > self.phi[idx]:
             idx += 1
-
         return idx
 
     def get_angle(self, x, y):
@@ -83,15 +97,11 @@ class WaypointUpdater(object):
         yc = y - self.y_ave
         
         # and now rotate
-        xr = xc * math.cos(self.rotate) - yc * math.sin(self.rotate)
-        yr = yc * math.cos(self.rotate) + xc * math.sin(self.rotate)
+        xr = xc * self.cos_rotate - yc * self.sin_rotate
+        yr = yc * self.cos_rotate + xc * self.sin_rotate
         
         # rho now starts at 0 and goes to 2pi for the track waypoints
         rho = math.pi - math.atan2(xr, yr)
-
-        if rho > 6.2828:
-            rospy.logwarn("Completed a lap")
-            
         return rho
 
     def pose_cb(self, msg):
@@ -104,10 +114,6 @@ class WaypointUpdater(object):
 
     def waypoints_cb(self, lane):
         wp = lane.waypoints
-        # the very first waypoint has the unadulterated max velocity
-        # in meters per second that is set in the launch file for the
-        # waypoints loader
-        
         x_tot = 0.0
         y_tot = 0.0
         for p in wp:
@@ -122,7 +128,9 @@ class WaypointUpdater(object):
         # all waypoints by
         xc = wp[0].pose.pose.position.x - self.x_ave
         yc = wp[0].pose.pose.position.y - self.y_ave
-        self.rotate = math.atan2(xc, yc) + math.pi
+        rot_angle = math.atan2(xc, yc) + math.pi
+        self.cos_rotate = math.cos(rot_angle)
+        self.sin_rotate = math.sin(rot_angle)
 
         for p in wp:
             rho = self.get_angle(p.pose.pose.position.x, p.pose.pose.position.y)

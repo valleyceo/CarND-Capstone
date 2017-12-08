@@ -27,7 +27,6 @@ class TLDetector(object):
         self.phi = []
         self.stop_lines = None        
         self.camera_image = None
-        self.lights = []
 
         sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
@@ -64,7 +63,7 @@ class TLDetector(object):
     def get_index(self, x, y):
         rho = self.get_angle(x, y)
         # special case of wrap around when past the last waypoint
-        if rho > self.phi[-1]:
+        if not self.phi or rho > self.phi[-1]:
             return 0
         
         idx = 0
@@ -107,18 +106,19 @@ class TLDetector(object):
         for p in self.waypoints:
             rho = self.get_angle(p.pose.pose.position.x, p.pose.pose.position.y)
             self.phi.append(rho)
-                
 
     def traffic_cb(self, msg):
         # Note that we depend on the fact that the stop_lines and the
         # traffic lights appear in the same order
         stop_line_positions = self.config['stop_line_positions']
+        if len(stop_line_positions) != len(msg.lights):
+            rospy.logerr("Bad msg on /vehicle/traffic_lights. length: %d" % len(msg.lights))
+
         self.stop_lines = []
         for light, stop_line in zip(msg.lights, stop_line_positions):
             sidx = self.get_index(stop_line[0], stop_line[1])
             self.stop_lines.append((sidx, light.state, light))
         self.stop_lines.sort()
-        self.lights = msg.lights
 
     def get_next_stop_line(self, pos):
         if len(self.stop_lines) == 0:
@@ -157,7 +157,8 @@ class TLDetector(object):
             self.state = state
         elif self.state_count >= STATE_COUNT_THRESHOLD:
             self.last_state = self.state
-            light_wp = light_wp if state == TrafficLight.RED else -1
+            # dbm added wp if red _or_ yellow
+            light_wp = light_wp if state == TrafficLight.RED or state == TrafficLight.YELLOW else -1
             self.last_wp = light_wp
             self.upcoming_red_light_pub.publish(Int32(light_wp))
         else:
