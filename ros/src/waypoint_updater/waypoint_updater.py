@@ -49,8 +49,6 @@ class WaypointUpdater(object):
         self.phi = []
         self.current_velocity = 0.0
         self.red_light = -1
-        self.last_x = 0.0
-        self.last_y = 0.0
 
         max_velocity = float(rospy.get_param("/waypoint_loader/velocity")) / 3.6
         self.target_velocity = min(TARGET_VELOCITY, max_velocity)
@@ -101,9 +99,8 @@ class WaypointUpdater(object):
         if self.waypoints == []:
             return None
 
-        self.last_x = msg.pose.position.x
-        self.last_y = msg.pose.position.y
-        idx = self.get_index(msg.pose.position.x, msg.pose.position.y)                  self.publish(idx)
+        idx = self.get_index(msg.pose.position.x, msg.pose.position.y)
+        self.publish(idx)
 
     def waypoints_cb(self, lane):
         wp = lane.waypoints
