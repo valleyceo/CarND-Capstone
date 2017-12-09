@@ -33,9 +33,17 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+# If it is not the highway, then it is the churchlot.  Highway is the
+# default
+HIGHWAY = True
 
-BRAKING_RANGE = 200 # This _must_ be smaller than lookahead
+if HIGHWAY:
+    LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+    BRAKING_RANGE = 200 # This _must_ be smaller than lookahead
+else:
+    # My version of churchlot has only 55 way points
+    LOOKAHEAD_WPS = 30 # Number of waypoints we will publish. You can change this number
+    BRAKING_RANGE = 30 # This _must_ be smaller than lookahead
 
 
 class WaypointUpdater(object):
