@@ -19,11 +19,13 @@ class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
 
+        self.pos = -1
         self.pose = None
         self.waypoints = []
         self.x_ave = 0.0
         self.y_ave = 0.0
-        self.rotate = 0.0
+        self.cos_rotate = 0.0
+        self.sin_rotate = 0.0
         self.phi = []
         self.stop_lines = None        
         self.camera_image = None
@@ -58,7 +60,9 @@ class TLDetector(object):
         rospy.spin()
 
     def pose_cb(self, msg):
-        self.pose = msg
+        if msg:
+            self.pos = self.get_index(msg.pose.position.x, msg.pose.position.y)
+            self.pose = msg
 
     def get_index(self, x, y):
         rho = self.get_angle(x, y)
@@ -78,8 +82,8 @@ class TLDetector(object):
         yc = y - self.y_ave
         
         # and now rotate
-        xr = xc * math.cos(self.rotate) - yc * math.sin(self.rotate)
-        yr = yc * math.cos(self.rotate) + xc * math.sin(self.rotate)
+        xr = xc * self.cos_rotate - yc * self.sin_rotate
+        yr = yc * self.cos_rotate + xc * self.sin_rotate
         
         # rho now starts at 0 and goes to 2pi for the track waypoints
         rho = math.pi - math.atan2(xr, yr)
@@ -101,37 +105,51 @@ class TLDetector(object):
         # all waypoints by
         xc = self.waypoints[0].pose.pose.position.x - self.x_ave
         yc = self.waypoints[0].pose.pose.position.y - self.y_ave
-        self.rotate = math.atan2(xc, yc) + math.pi
+        rotate = math.atan2(xc, yc) + math.pi
+        self.cos_rotate = math.cos(rotate)
+        self.sin_rotate = math.sin(rotate)
 
         for p in self.waypoints:
             rho = self.get_angle(p.pose.pose.position.x, p.pose.pose.position.y)
             self.phi.append(rho)
 
+        # We can only process the stop_lines after the waypoints
+        stop_line_positions = self.config['stop_line_positions']
+        self.stop_idxs = []
+        for stop_line in stop_line_positions:
+            idx = self.get_index(stop_line[0], stop_line[1])
+            self.stop_idxs.append(idx)
+            
+        rospy.logwarn(self.stop_idxs)
+            
+
     def traffic_cb(self, msg):
         # Note that we depend on the fact that the stop_lines and the
-        # traffic lights appear in the same order
-        stop_line_positions = self.config['stop_line_positions']
-        if len(stop_line_positions) != len(msg.lights):
-            rospy.logerr("Bad msg on /vehicle/traffic_lights. length: %d" % len(msg.lights))
+        # traffic lights appear in the same order in their config files
 
         self.stop_lines = []
-        for light, stop_line in zip(msg.lights, stop_line_positions):
-            sidx = self.get_index(stop_line[0], stop_line[1])
+        for i, light in enumerate(msg.lights):
+            sidx = self.stop_idxs[i]
             self.stop_lines.append((sidx, light.state, light))
         self.stop_lines.sort()
 
-    def get_next_stop_line(self, pos):
+    def get_next_stop_line(self):
         if len(self.stop_lines) == 0:
             return (None, None, None)
-        elif pos > self.stop_lines[-1][0]:
+        elif self.pos > self.stop_lines[-1][0]:
             return self.stop_lines[0]
         idx = 0
         num_lights = len(self.stop_lines)
-        while pos > self.stop_lines[idx][0]:
+        while self.pos > self.stop_lines[idx][0]:
             idx += 1
             if idx >= len(self.stop_lines):
                 rospy.logerr("stop lines idx: %d" % idx)
 
+        # for debug. a positions past the last stop_line will trigger
+        # if self.pos > self.stop_lines[idx][0]:
+        #     rospy.logwarn("get_next_stop_line self.pos %d  stop_lines: %d" % \
+        #                   (self.pos, self.stop_lines[idx][0]))
+            
         return self.stop_lines[idx]
 
     def image_cb(self, msg):
@@ -144,7 +162,7 @@ class TLDetector(object):
         """
         self.has_image = True
         self.camera_image = msg
-        light_wp, state = self.process_traffic_lights()
+        incoming_light_wp, state = self.process_traffic_lights()
 
         '''
         Publish upcoming red lights at camera frequency.
@@ -155,14 +173,17 @@ class TLDetector(object):
         if self.state != state:
             self.state_count = 0
             self.state = state
+            light_wp = self.last_wp
         elif self.state_count >= STATE_COUNT_THRESHOLD:
             self.last_state = self.state
-            # dbm added wp if red _or_ yellow
-            light_wp = light_wp if state == TrafficLight.RED or state == TrafficLight.YELLOW else -1
+            light_wp = incoming_light_wp if state == TrafficLight.RED or \
+                       state == TrafficLight.YELLOW else -1
             self.last_wp = light_wp
-            self.upcoming_red_light_pub.publish(Int32(light_wp))
         else:
-            self.upcoming_red_light_pub.publish(Int32(self.last_wp))
+            light_wp = self.last_wp
+
+        # Make sure we publish on every cycle
+        self.upcoming_red_light_pub.publish(Int32(light_wp))
         self.state_count += 1
 
     def get_closest_waypoint(self, pose):
@@ -210,9 +231,9 @@ class TLDetector(object):
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
         if(self.pose):
-            car_position = self.get_closest_waypoint(self.pose.pose)
-            #TODO find the closest visible traffic light (if one exists)
-            stop_line_wp, state, light = self.get_next_stop_line(car_position)
+            # car_position is maintained by pose_cb
+            # Find the closest visible traffic light (if one exists)
+            stop_line_wp, state, light = self.get_next_stop_line()
 
         if light:
             if USE_CLASSIFICATION:
