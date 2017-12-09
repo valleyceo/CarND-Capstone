@@ -35,7 +35,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 # If it is not the highway, then it is the churchlot.  Highway is the
 # default
-HIGHWAY = True
+HIGHWAY = False
 
 if HIGHWAY:
     LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
@@ -82,7 +82,7 @@ class WaypointUpdater(object):
             self.lap_count += 1
             rospy.logwarn("Completed lap %d" % self.lap_count)
             self.lap_toggle = False
-        elif rho > 6.2:
+        elif rho > 6.0:
             self.lap_toggle = True
         return
     
