@@ -52,7 +52,8 @@ class DBWNode(object):
         self.fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)   # check
         self.brake_deadband = rospy.get_param('~brake_deadband', .1)   # check
         #self.decel_limit = rospy.get_param('~decel_limit', -5)         # check
-        self.decel_limit = -8.0
+        # Go for the gusto... slam on the brakes
+        self.decel_limit = -50.0
         self.accel_limit = rospy.get_param('~accel_limit', 1.)
         self.wheel_radius = rospy.get_param('~wheel_radius', 0.2413)   # check
         self.wheel_base = rospy.get_param('~wheel_base', 2.8498)       # check

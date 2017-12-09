@@ -56,7 +56,8 @@ class TLDetector(object):
         self.last_state = TrafficLight.UNKNOWN
         self.last_wp = -1
         self.state_count = 0
-
+        self.stop_idxs = []
+        
         rospy.spin()
 
     def pose_cb(self, msg):
@@ -115,7 +116,6 @@ class TLDetector(object):
 
         # We can only process the stop_lines after the waypoints
         stop_line_positions = self.config['stop_line_positions']
-        self.stop_idxs = []
         for stop_line in stop_line_positions:
             idx = self.get_index(stop_line[0], stop_line[1])
             self.stop_idxs.append(idx)
@@ -124,9 +124,11 @@ class TLDetector(object):
             
 
     def traffic_cb(self, msg):
+        if not self.stop_idxs:
+            return
         # Note that we depend on the fact that the stop_lines and the
         # traffic lights appear in the same order in their config files
-
+        
         self.stop_lines = []
         for i, light in enumerate(msg.lights):
             sidx = self.stop_idxs[i]
@@ -134,7 +136,7 @@ class TLDetector(object):
         self.stop_lines.sort()
 
     def get_next_stop_line(self):
-        if len(self.stop_lines) == 0:
+        if not self.stop_lines or not self.stop_idxs:
             return (None, None, None)
         elif self.pos > self.stop_lines[-1][0]:
             return self.stop_lines[0]

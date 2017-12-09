@@ -76,7 +76,7 @@ class Controller(object):
         # rospy.logwarn("proposed: %f  current: %f  error: %f  accel: %f" % \
         #               (proposed_linear, current_linear, velo_error, accel_est))
         
-        if accel_est >= 0:
+        if accel_est >= 0.05:
             filtered_accel = self.dbw_node.lp_filter.get()
             delta_accel = accel_est - filtered_accel
             tctrl = self.accel_pid.step(delta_accel, CONTROL_PERIOD)

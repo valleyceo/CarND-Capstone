@@ -35,11 +35,11 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 # If it is not the highway, then it is the churchlot.  Highway is the
 # default
-HIGHWAY = False
+HIGHWAY = True
 
 if HIGHWAY:
     LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
-    BRAKING_RANGE = 200 # This _must_ be smaller than lookahead
+    BRAKING_RANGE = 130 # This _must_ be smaller than lookahead
 else:
     # My version of churchlot has only 55 way points
     LOOKAHEAD_WPS = 30 # Number of waypoints we will publish. You can change this number
@@ -192,14 +192,19 @@ class WaypointUpdater(object):
                 for i in range(CREEP_RANGE - 5, LOOKAHEAD_WPS):
                     self.set_waypoint_velocity(lane.waypoints, i, 0.0)
             else:                
-                incr = 1.1 * (self.current_velocity / max(0.1, float(dist)))
-                velo = self.current_velocity - incr
-                for i in range(dist):
-                    self.set_waypoint_velocity(lane.waypoints, i, max(0.0, velo))
-                    velo -= incr
-                #rospy.logwarn("%d  %d  %d  %d" % (dist, len(lane.waypoints), LOOKAHEAD_WPS))
-                for i in range(dist, LOOKAHEAD_WPS):
+                # incr = 1.1 * (self.current_velocity / max(0.1, float(dist)))
+                # velo = self.current_velocity - incr
+                # for i in range(dist):
+                #     self.set_waypoint_velocity(lane.waypoints, i, max(0.0, velo))
+                #     velo -= incr
+                # #rospy.logwarn("%d  %d  %d  %d" % (dist, len(lane.waypoints), LOOKAHEAD_WPS))
+                # for i in range(dist, LOOKAHEAD_WPS):
+                #     self.set_waypoint_velocity(lane.waypoints, i, 0.0)
+
+                # let's just try a hard stop
+                for i in range(LOOKAHEAD_WPS):
                     self.set_waypoint_velocity(lane.waypoints, i, 0.0)
+                
         else:
             for i in range(LOOKAHEAD_WPS):
                 self.set_waypoint_velocity(lane.waypoints, i, self.target_velocity)
