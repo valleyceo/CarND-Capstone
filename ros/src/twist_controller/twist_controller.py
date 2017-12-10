@@ -1,4 +1,5 @@
 import rospy
+import numpy as np
 from pid import PID
 from yaw_controller import YawController
 
@@ -10,6 +11,7 @@ CONTROL_PERIOD = 1.0 / CONTROL_RATE
 # Two people in car?
 PASSENGER_MASS = 150
 SPEED_EPS = 0.1
+ANGLE_EPS = 0.001
 
 class Controller(object):
     def __init__(self, dbw_node):
@@ -31,16 +33,25 @@ class Controller(object):
         # Values of Kp, Ki, and Kd are from DataSpeed example
         # This is really only a proportional filter
         # (curiously, it looks like DS sets both min and max to 9.8
+        # These values are intended only for the two stage controller
         self.velo_pid = PID(2.0, 0.0, 0.0, -9.8, 9.8)
+
+        # original Karsten patch... Alternates between throttle full
+        # or full braking crashes early
+        #self.velo_pid = PID(3.0, 0.1, 0.2, -1.0, 1.0)        
         
-        # this set of values worked OK for 30mph, but that is too high
-        # for this project
-        #self.velo_pid = PID(2.0, 0.0, 0.1, -9.8, 9.8)
-        
+        # this one modified from Karsten's patch.  Got rid of I and D
+        # speed control looks great and braking at max works too.
+        # only... steering doesn't play well with it
+        #self.velo_pid = PID(2.0, 0.0, 0.0, -1.0, 1.0)
+
         # Throttle is between 0.0 and 1.0
         # Values of Kp, Ki, and Kd are from DataSpeed example
         self.accel_pid = PID(0.4, 0.1, 0.0, 0.0, 1.0)
-        #self.accel_pid = PID(0.4, 0.1, 0.2, 0.0, 1.0)
+
+        # PID for cross track error.  Meant to replace yaw_control
+        # DOES NOT WORK WELL
+        self.cte_pid = PID(0.2, 0.001, 0.85)
         
 
     # This only does yaw control at constant throttle.  Now used
@@ -54,16 +65,31 @@ class Controller(object):
                                                  current_linear)
         brake = 0.0
         return throttle, brake, steering
-        
-
     
     def control(self, proposed_linear, proposed_angular,
                      current_linear, current_angular):
 
-        # First, get the steering angle
+        '''
+        #--------- The Udacity provided steering
+        steering = self.yaw_control.orig_get_steering(proposed_linear,
+                                                 proposed_angular,
+                                                 current_linear)
+        '''
+        
+        #--------- Modified steering for better low velocity control
         steering = self.yaw_control.get_steering(proposed_linear,
                                                  proposed_angular,
                                                  current_linear)
+
+        '''
+        #--------- CTE-PID Steering Controller-----------
+        # Looks good until it goes completely haywire
+
+        if abs(self.dbw_node.cte) < ANGLE_EPS:
+            self.cte_pid.reset()
+
+        steering = self.cte_pid.step(self.dbw_node.cte, CONTROL_PERIOD)
+        '''
 
         velo_error = proposed_linear - current_linear
 
@@ -73,25 +99,42 @@ class Controller(object):
 
         accel_est = self.velo_pid.step(velo_error, CONTROL_PERIOD)
 
-        # rospy.logwarn("proposed: %f  current: %f  error: %f  accel: %f" % \
-        #               (proposed_linear, current_linear, velo_error, accel_est))
+        '''
+        #--------------Karsten  1-Stage Controller----------------
+
+        throttle = 0.0
+        brake = 0.0
+
+        if accel_est > 0.0:
+		throttle = accel_est
+
+	if accel_est < 0.0:
+		brake = -accel_est * 650.0
+
+	outstr = "Throttle : " + str(throttle) + " Brake : " + str(brake)
+	rospy.loginfo(outstr)
+        '''
         
+        #---------------- DBM 2-stage controller -----------------
+
+        # rospy.loginfo("proposed: %f  current: %f  error: %f  accel: %f" % \
+        #               (proposed_linear, current_linear, velo_error, accel_est))
+
         if accel_est >= 0.05:
             filtered_accel = self.dbw_node.lp_filter.get()
             delta_accel = accel_est - filtered_accel
             tctrl = self.accel_pid.step(delta_accel, CONTROL_PERIOD)
             throttle = tctrl
-            #rospy.logwarn("  filtered: %f   delta: %f   throttle: %f" % (filtered_accel,
-            #                                                            delta_accel, tctrl))
         else:
             self.accel_pid.reset()
             throttle = 0.0
 
-        if accel_est < -self.dbw_node.brake_deadband:
+        #if accel_est < -self.dbw_node.brake_deadband:
+        if accel_est < 0.0:
             # braking takes a positive value
             calc_brake = -accel_est * self.vehicle_mass * self.dbw_node.wheel_radius
-            brake = min(calc_brake, -self.dbw_node.decel_limit)
-            #rospy.logwarn("CALC_BRAKING: %f   BRAKE %f" % (calc_brake, brake))
+            # Should move this magic number somewhere else
+            brake = min(calc_brake, 650)
         else:
             brake = 0.0
             
@@ -99,5 +142,5 @@ class Controller(object):
         if  not self.dbw_node.dbw_enabled:
             self.velo_pid.reset()
             self.accel_pid.reset()
-            
+
         return throttle, brake, steering

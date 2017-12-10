@@ -12,6 +12,7 @@ import tf
 import cv2
 import yaml
 
+LOOKAHEAD_WPS = 200
 USE_CLASSIFICATION = False
 STATE_COUNT_THRESHOLD = 3
 
@@ -120,7 +121,7 @@ class TLDetector(object):
             idx = self.get_index(stop_line[0], stop_line[1])
             self.stop_idxs.append(idx)
             
-        rospy.logwarn(self.stop_idxs)
+        rospy.loginfo(self.stop_idxs)
             
 
     def traffic_cb(self, msg):
@@ -149,7 +150,7 @@ class TLDetector(object):
 
         # for debug. a positions past the last stop_line will trigger
         # if self.pos > self.stop_lines[idx][0]:
-        #     rospy.logwarn("get_next_stop_line self.pos %d  stop_lines: %d" % \
+        #     rospy.loginfo("get_next_stop_line self.pos %d  stop_lines: %d" % \
         #                   (self.pos, self.stop_lines[idx][0]))
             
         return self.stop_lines[idx]
@@ -232,17 +233,20 @@ class TLDetector(object):
 
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
-        if(self.pose):
-            # car_position is maintained by pose_cb
+        if  self.pose:
+            # car_position is now maintained by pose_cb as self.pos
             # Find the closest visible traffic light (if one exists)
             stop_line_wp, state, light = self.get_next_stop_line()
+	    outstr = "Car position : " + str(self.pos) + " stop_line_wp : " + str(stop_line_wp)
+            #rospy.loginfo(outstr)
+            
 
         if light:
             if USE_CLASSIFICATION:
                 state = self.get_light_state(light)
+                
             return stop_line_wp, state
-        
-        #self.waypoints = None
+
         return -1, TrafficLight.UNKNOWN
 
 if __name__ == '__main__':

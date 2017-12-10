@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import rospy
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
 from geometry_msgs.msg import TwistStamped
 from lowpass import LowPassFilter
@@ -53,7 +53,7 @@ class DBWNode(object):
         self.brake_deadband = rospy.get_param('~brake_deadband', .1)   # check
         #self.decel_limit = rospy.get_param('~decel_limit', -5)         # check
         # Go for the gusto... slam on the brakes
-        self.decel_limit = -50.0
+        self.decel_limit = -650.0
         self.accel_limit = rospy.get_param('~accel_limit', 1.)
         self.wheel_radius = rospy.get_param('~wheel_radius', 0.2413)   # check
         self.wheel_base = rospy.get_param('~wheel_base', 2.8498)       # check
@@ -65,6 +65,7 @@ class DBWNode(object):
         self.current_angular = 0.0
         self.proposed_linear = 0.0
         self.proposed_angular = 0.0
+        self.cte = 0.0
         self.lp_filter = LowPassFilter(0.5, CONTROL_PERIOD)
         
         self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',
@@ -84,7 +85,7 @@ class DBWNode(object):
         rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb)
         rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
-        
+        rospy.Subscriber('/cross_track_error', Float64, self.cross_track_cb)        
         self.loop()
 
     def loop(self):
@@ -134,6 +135,10 @@ class DBWNode(object):
 
     def dbw_enabled_cb(self, msg):
         self.dbw_enabled = msg
+        return
+
+    def cross_track_cb(self, msg):
+        self.cte = msg.data
         return
     
 if __name__ == '__main__':
