@@ -6,6 +6,9 @@ import numpy as np
 import rospy
 import time
 
+import cv2
+from PIL import Image
+
 # trained model path
 MODEL_PATH = os.path.join(os.getcwd(), '../../..', 'train_classifier')
 
@@ -17,6 +20,13 @@ sys.path.append(os.path.join(ROOT_PATH, 'models/research/object_detection/utils'
 # import tensorflow models functions
 from label_map_util import load_labelmap, convert_label_map_to_categories, create_category_index
 from visualization_utils import visualize_boxes_and_labels_on_image_array
+
+CLASS_TO_TRAFFIC_LIGHT = {
+    2: TrafficLight.RED,
+    3: TrafficLight.YELLOW,
+    1: TrafficLight.GREEN,
+    4: TrafficLight.UNKNOWN
+}
 
 ##################################
 # Traffic Light Classifier Class #
@@ -80,8 +90,16 @@ class TLClassifier(object):
         # For timing single frame detection
         #start = time.time()
         
+        def load_image_into_numpy_array(image):
+            (im_width, im_height) = image.size
+            return np.array(image).reshape(
+                    (im_height, im_width, 3)).astype(np.uint8)
+
         if run_network is True:
-            image_np_expanded = np.expand_dims(image, axis=0)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(image)
+            image_np = load_image_into_numpy_array(image)
+            image_np_expanded = np.expand_dims(image_np, axis=0)
 
             # Actual detection.
             with self.detection_graph.as_default():
@@ -95,47 +113,12 @@ class TLClassifier(object):
             classes = np.squeeze(classes).astype(np.int32)
 
             min_score_thresh = .50
+            light = TrafficLight.UNKNOWN
+
             for i in range(boxes.shape[0]):
-                if scores is None or scores[i] > min_score_thresh:
+                if scores[i] > min_score_thresh:
+                        c_l = CLASS_TO_TRAFFIC_LIGHT[classes[i]]
+                        if c_l < light:
+                            light = c_l
+            return light
 
-                    class_name = self.category_index[classes[i]]['name']
-                    # class_id = self.category_index[classes[i]]['id']  # if needed
-
-                    print('{}'.format(class_name))
-
-                    # Traffic light thing
-                    self.current_light = TrafficLight.UNKNOWN
-
-                    if class_name == 'Red':
-                        self.current_light = 2
-                    elif class_name == 'Green':
-                        self.current_light = 1
-                    elif class_name == 'Yellow':
-                        self.current_light = 3
-                    #print(self.current_light)
-
-                    fx = 1345.200806
-                    fy = 1353.838257
-                    perceived_width_x = (boxes[i][3] - boxes[i][1]) * 800
-                    perceived_width_y = (boxes[i][2] - boxes[i][0]) * 600
-
-                    perceived_depth_x = ((1 * fx) / perceived_width_x)
-                    perceived_depth_y = ((3 * fy) / perceived_width_y)
-
-                    estimated_distance = round((perceived_depth_x + perceived_depth_y) / 2)
-
-            # # Visualization of the results of a detection.
-            # visualize_boxes_and_labels_on_image_array(
-            #     image, boxes, classes, scores,
-            #     self.category_index,
-            #     use_normalized_coordinates=True,
-            #     line_thickness=8)
-
-        # For visualization topic output
-        #self.image_np_deep = image
-
-        # For timing single frame detection
-        #end = time.time()
-        #rospy.logwarn("Frame detection time: %f" % (end - start))
-        
-        return self.current_light
